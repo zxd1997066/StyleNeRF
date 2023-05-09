@@ -73,8 +73,10 @@ function generate_core {
                 --precision $precision --num_iter $num_iter --num_warmup $num_warmup --n_steps 1 \
                 --channels_last $channels_last --batch_size $batch_size \
                 ${addtion_options} \
-        > /dev/null 2>&1 &  \n" |tee -a ${excute_cmd_file}
-        break
+        > ${log_file} 2>&1 &  \n" |tee -a ${excute_cmd_file}
+        if [ "${numa_nodes_use}" == "0" ];then
+            break
+        fi
     done
     echo -e "\n wait" >> ${excute_cmd_file}
 }
