@@ -51,9 +51,19 @@ os.environ['PYOPENGL_PLATFORM'] = 'egl'
 @click.option('--outdir', help='Where to save the output images', type=str, required=True, metavar='DIR')
 @click.option('--render-program', default=None, show_default=True)
 @click.option('--render-option', default=None, type=str, help="e.g. up_256, camera, depth")
-@click.option('--n_steps', default=8, type=int, help="number of steps for each seed")
+@click.option('--n_steps', default=1, type=int, help="number of steps for each seed")
 @click.option('--no-video', default=False)
 @click.option('--relative_range_u_scale', default=1.0, type=float, help="relative scale on top of the original range u")
+@click.option('--device_type', help='', type=str, default='cpu')
+@click.option('--precision', default='float32', type=str, help='')
+@click.option('--num_iter', default=0, type=int, help='')
+@click.option('--num_warmup', default=0, type=int, help='')
+@click.option('--channels_last', default=1, type=int, help='')
+@click.option('--batch_size', default=1, type=int, help='')
+@click.option('--ipex', default=False, help='')
+@click.option('--profile', default=False, help='')
+@click.option('--jit', default=False, help='')
+
 def generate_images(
     ctx: click.Context,
     network_pkl: str,
@@ -61,17 +71,26 @@ def generate_images(
     truncation_psi: float,
     noise_mode: str,
     outdir: str,
+    device_type: str,
+    precision: str,
     class_idx: Optional[int],
     projected_w: Optional[str],
     render_program=None,
     render_option=None,
     n_steps=8,
+    num_iter=0,
+    num_warmup=0,
     no_video=False,
-    relative_range_u_scale=1.0
+    relative_range_u_scale=1.0,
+    channels_last=1,
+    batch_size=1,
+    jit=False,
+    ipex=False,
+    profile=False
 ):
 
     
-    device = torch.device('cuda')
+    device = torch.device(device_type)
     if os.path.isdir(network_pkl):
         network_pkl = sorted(glob.glob(network_pkl + '/*.pkl'))[-1]
     print('Loading networks from "%s"...' % network_pkl)
@@ -102,8 +121,20 @@ def generate_images(
         misc.copy_params_and_buffers(G, G2, require_all=False)
         # D2 = Discriminator(*D.init_args, **D.init_kwargs).to(device)
         # misc.copy_params_and_buffers(D, D2, require_all=False)
-    G2 = Renderer(G2, D, program=render_program)
     
+    if channels_last:
+        G2 = G2.to(memory_format=torch.channels_last)
+        print("Running NHWC ...")
+    if ipex:
+        G2.eval()
+        import intel_extension_for_pytorch as ipex
+        if precision == "bfloat16":
+            G2 = ipex.optimize(G2, dtype=torch.bfloat16, inplace=True)
+        elif precision == "float32":
+            G2 = ipex.optimize(G2, dtype=torch.float32, inplace=True)
+        print("Running IPEX ...")  
+    G2 = Renderer(G2, D, program=render_program)
+
     # Generate images.
     all_imgs = []
 
@@ -114,6 +145,20 @@ def generate_images(
     def proc_img(img): 
         return (img.permute(0, 2, 3, 1) * 127.5 + 128).clamp(0, 255).to(torch.uint8).cpu()
 
+    def trace_handler(p):
+        output = p.key_averages().table(sort_by="self_cpu_time_total")
+        print(output)
+        import pathlib
+        timeline_dir = str(pathlib.Path.cwd()) + '/timeline/'
+        if not os.path.exists(timeline_dir):
+            try:
+                os.makedirs(timeline_dir)
+            except:
+                pass
+        timeline_file = timeline_dir + 'timeline-' + str(torch.backends.quantized.engine) + '-' + \
+                    'StyleNeRF-' + str(p.step_num) + '-' + str(os.getpid()) + '.json'
+        p.export_chrome_trace(timeline_file)
+
     if projected_w is not None:
         ws = np.load(projected_w)
         ws = torch.tensor(ws, device=device) # pylint: disable=not-callable
@@ -123,20 +168,135 @@ def generate_images(
         all_imgs += [imgs]
     
     else:
+        total_time = 0.0
+        total_sample = 0
+        batch_time_list = []
         for seed_idx, seed in enumerate(seeds):
-            print('Generating image for seed %d (%d/%d) ...' % (seed, seed_idx, len(seeds)))
-            G2.set_random_seed(seed)
-            z = torch.from_numpy(np.random.RandomState(seed).randn(2, G.z_dim)).to(device)
+            z = torch.from_numpy(np.random.RandomState(seed).randn(batch_size, G.z_dim)).to(device)
+            print(z.shape)
+            if jit and seed_idx == 0:
+                with torch.no_grad():
+                    try:
+                        G2 = torch.jit.trace(G2, z, check_trace=False)
+                        print("---- Use trace model.")
+                    except:
+                        G2 = torch.jit.script(G2)
+                        print("---- Use script model.")
+                    if ipex:
+                        G2 = torch.jit.freeze(G2)
+            # if channels_last:
+            #     z = z.to(memory_format=torch.channels_last)
             relative_range_u = [0.5 - 0.5 * relative_range_u_scale, 0.5 + 0.5 * relative_range_u_scale]
-            outputs = G2(
-                z=z,
-                c=label,
-                truncation_psi=truncation_psi,
-                noise_mode=noise_mode,
-                render_option=render_option,
-                n_steps=n_steps,
-                relative_range_u=relative_range_u,
-                return_cameras=True)
+            if profile:
+                with torch.profiler.profile(
+                    activities=[torch.profiler.ProfilerActivity.CPU],
+                    record_shapes=True,
+                    schedule=torch.profiler.schedule(
+                        wait=int((num_iter)/2),
+                        warmup=2,
+                        active=1,
+                    ),
+                    on_trace_ready=trace_handler,
+                ) as p:
+                    if precision == "bfloat16":
+                        with torch.cpu.amp.autocast(enabled=True, dtype=torch.bfloat16):
+                            for i in range(num_iter):
+                                tic = time.time()
+                                outputs = G2(
+                                    z=z,
+                                    c=label,
+                                    truncation_psi=truncation_psi,
+                                    noise_mode=noise_mode,
+                                    render_option=render_option,
+                                    n_steps=n_steps,
+                                    relative_range_u=relative_range_u,
+                                    return_cameras=True
+                                )
+                                p.step()
+                                toc = time.time()
+                                elapsed = toc - tic
+                                print("Iteration: {}, inference time: {} sec.".format(i, elapsed), flush=True)
+                                if i >= num_warmup:
+                                    total_time += elapsed
+                                    total_sample += 1
+                                    batch_time_list.append((toc - tic) * 1000)
+                    else:
+                        for i in range(num_iter):
+                            tic = time.time()
+                            outputs = G2(
+                                z=z,
+                                c=label,
+                                truncation_psi=truncation_psi,
+                                noise_mode=noise_mode,
+                                render_option=render_option,
+                                n_steps=n_steps,
+                                relative_range_u=relative_range_u,
+                                return_cameras=True
+                            )
+                            p.step()
+                            toc = time.time()
+                            elapsed = toc - tic
+                            print("Iteration: {}, inference time: {} sec.".format(i, elapsed), flush=True)
+                            if i >= num_warmup:
+                                total_time += elapsed
+                                total_sample += 1
+                                batch_time_list.append((toc - tic) * 1000)
+            else:
+                if precision == "bfloat16":
+                    with torch.cpu.amp.autocast(enabled=True, dtype=torch.bfloat16):
+                        for i in range(num_iter):
+                            tic = time.time()
+                            outputs = G2(
+                                z=z,
+                                c=label,
+                                truncation_psi=truncation_psi,
+                                noise_mode=noise_mode,
+                                render_option=render_option,
+                                n_steps=n_steps,
+                                relative_range_u=relative_range_u,
+                                return_cameras=True
+                            )
+                            toc = time.time()
+                            elapsed = toc - tic
+                            print("Iteration: {}, inference time: {} sec.".format(i, elapsed), flush=True)
+                            if i >= num_warmup:
+                                total_time += elapsed
+                                total_sample += 1
+                                batch_time_list.append((toc - tic) * 1000)
+                else:
+                    for i in range(num_iter):
+                        tic = time.time()
+                        outputs = G2(
+                            z=z,
+                            c=label,
+                            truncation_psi=truncation_psi,
+                            noise_mode=noise_mode,
+                            render_option=render_option,
+                            n_steps=n_steps,
+                            relative_range_u=relative_range_u,
+                            return_cameras=True
+                        )
+                        toc = time.time()
+                        elapsed = toc - tic
+                        print("Iteration: {}, inference time: {} sec.".format(i, elapsed), flush=True)
+                        if i >= num_warmup:
+                            total_time += elapsed
+                            total_sample += 1
+                            batch_time_list.append((toc - tic) * 1000)
+
+            print("\n", "-"*20, "Summary", "-"*20)
+            latency = total_time / total_sample * 1000
+            throughput = total_sample / total_time
+            print("Latency:\t {:.3f} ms".format(latency))
+            print("Throughput:\t {:.2f} samples/s".format(throughput))
+            # P50
+            batch_time_list.sort()
+            p50_latency = batch_time_list[int(len(batch_time_list) * 0.50) - 1]
+            p90_latency = batch_time_list[int(len(batch_time_list) * 0.90) - 1]
+            p99_latency = batch_time_list[int(len(batch_time_list) * 0.99) - 1]
+            print('Latency P50:\t %.3f ms\nLatency P90:\t %.3f ms\nLatency P99:\t %.3f ms\n'\
+                    % (p50_latency, p90_latency, p99_latency))
+
             if isinstance(outputs, tuple):
                 img, cameras = outputs
             else:

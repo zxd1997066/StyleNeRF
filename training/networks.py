@@ -71,7 +71,8 @@ def modulated_conv2d(
         _, in_channels, kd, kh, kw = weight.shape
     else:
         _, in_channels, kh, kw = weight.shape
-
+    if x.dtype == torch.float16:
+        x = x.to(dtype=torch.float32)
     # Pre-normalize inputs to avoid FP16 overflow.
     if x.dtype == torch.float16 and demodulate:
         weight_sizes = in_channels * kh * kw if mode != '3d' else in_channels * kd * kh * kw
@@ -852,7 +853,6 @@ class SynthesisBlock(torch.nn.Module):
             else:
                 img = None
 
-        assert x.dtype == dtype
         assert img is None or img.dtype == torch.float32
         return x, img
 
