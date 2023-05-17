@@ -220,6 +220,28 @@ def generate_images(
                                     total_time += elapsed
                                     total_sample += 1
                                     batch_time_list.append((toc - tic) * 1000)
+                    elif precision == "float16":
+                        with torch.cpu.amp.autocast(enabled=True, dtype=torch.half):
+                            for i in range(num_iter):
+                                tic = time.time()
+                                outputs = G2(
+                                    z=z,
+                                    c=label,
+                                    truncation_psi=truncation_psi,
+                                    noise_mode=noise_mode,
+                                    render_option=render_option,
+                                    n_steps=n_steps,
+                                    relative_range_u=relative_range_u,
+                                    return_cameras=True
+                                )
+                                p.step()
+                                toc = time.time()
+                                elapsed = toc - tic
+                                print("Iteration: {}, inference time: {} sec.".format(i, elapsed), flush=True)
+                                if i >= num_warmup:
+                                    total_time += elapsed
+                                    total_sample += 1
+                                    batch_time_list.append((toc - tic) * 1000)
                     else:
                         for i in range(num_iter):
                             tic = time.time()
@@ -244,6 +266,27 @@ def generate_images(
             else:
                 if precision == "bfloat16":
                     with torch.cpu.amp.autocast(enabled=True, dtype=torch.bfloat16):
+                        for i in range(num_iter):
+                            tic = time.time()
+                            outputs = G2(
+                                z=z,
+                                c=label,
+                                truncation_psi=truncation_psi,
+                                noise_mode=noise_mode,
+                                render_option=render_option,
+                                n_steps=n_steps,
+                                relative_range_u=relative_range_u,
+                                return_cameras=True
+                            )
+                            toc = time.time()
+                            elapsed = toc - tic
+                            print("Iteration: {}, inference time: {} sec.".format(i, elapsed), flush=True)
+                            if i >= num_warmup:
+                                total_time += elapsed
+                                total_sample += 1
+                                batch_time_list.append((toc - tic) * 1000)
+                elif precision == "float16":
+                    with torch.cpu.amp.autocast(enabled=True, dtype=torch.half):
                         for i in range(num_iter):
                             tic = time.time()
                             outputs = G2(
