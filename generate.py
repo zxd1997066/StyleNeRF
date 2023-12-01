@@ -63,6 +63,10 @@ os.environ['PYOPENGL_PLATFORM'] = 'egl'
 @click.option('--ipex', default=False, help='')
 @click.option('--profile', default=False, help='')
 @click.option('--jit', default=False, help='')
+@click.option("--compile", action='store_true', default=False,
+                    help="enable torch.compile")
+@click.option("--backend", type=str, default='inductor',
+                    help="enable torch.compile backend")
 
 def generate_images(
     ctx: click.Context,
@@ -125,6 +129,8 @@ def generate_images(
     if channels_last:
         G2 = G2.to(memory_format=torch.channels_last)
         print("Running NHWC ...")
+    if compile:
+        G2 = torch.compile(G2, backend=backend, options={"freezing": True})
     if ipex:
         G2.eval()
         import intel_extension_for_pytorch as ipex
