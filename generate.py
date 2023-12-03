@@ -133,6 +133,7 @@ def generate_images(
         print("Running NHWC ...")
     if compile:
         G2 = torch.compile(G2, backend=backend, options={"freezing": True})
+        print("Running compile")
     if ipex:
         G2.eval()
         import intel_extension_for_pytorch as ipex
