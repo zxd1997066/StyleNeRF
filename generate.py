@@ -63,7 +63,7 @@ os.environ['PYOPENGL_PLATFORM'] = 'egl'
 @click.option('--ipex', default=False, help='')
 @click.option('--profile', default=False, help='')
 @click.option('--jit', default=False, help='')
-@click.option("--compile", action='store_true', default=False,
+@click.option("--compile", default=False,
                     help="enable torch.compile")
 @click.option("--backend", type=str, default='inductor',
                     help="enable torch.compile backend")
