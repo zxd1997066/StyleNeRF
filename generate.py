@@ -90,7 +90,9 @@ def generate_images(
     batch_size=1,
     jit=False,
     ipex=False,
-    profile=False
+    profile=False,
+    compile=False,
+    backend='inductor'
 ):
 
     
