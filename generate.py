@@ -208,7 +208,7 @@ def generate_images(
                     on_trace_ready=trace_handler,
                 ) as p:
                     if precision == "bfloat16":
-                        with torch.cpu.amp.autocast(enabled=True, dtype=torch.bfloat16):
+                        with torch.autocast(device_type="cuda" if torch.cuda.is_available() else "cpu", enabled=True, dtype=torch.bfloat16):
                             for i in range(num_iter):
                                 tic = time.time()
                                 outputs = G2(
@@ -230,7 +230,7 @@ def generate_images(
                                     total_sample += 1
                                     batch_time_list.append((toc - tic) * 1000)
                     elif precision == "float16":
-                        with torch.cpu.amp.autocast(enabled=True, dtype=torch.half):
+                        with torch.autocast(device_type="cuda" if torch.cuda.is_available() else "cpu", enabled=True, dtype=torch.half):
                             for i in range(num_iter):
                                 tic = time.time()
                                 outputs = G2(
@@ -274,7 +274,7 @@ def generate_images(
                                 batch_time_list.append((toc - tic) * 1000)
             else:
                 if precision == "bfloat16":
-                    with torch.cpu.amp.autocast(enabled=True, dtype=torch.bfloat16):
+                    with torch.autocast(device_type="cuda" if torch.cuda.is_available() else "cpu", enabled=True, dtype=torch.bfloat16):
                         for i in range(num_iter):
                             tic = time.time()
                             outputs = G2(
@@ -295,7 +295,7 @@ def generate_images(
                                 total_sample += 1
                                 batch_time_list.append((toc - tic) * 1000)
                 elif precision == "float16":
-                    with torch.cpu.amp.autocast(enabled=True, dtype=torch.half):
+                    with torch.autocast(device_type="cuda" if torch.cuda.is_available() else "cpu", enabled=True, dtype=torch.half):
                         for i in range(num_iter):
                             tic = time.time()
                             outputs = G2(
