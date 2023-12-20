@@ -18,6 +18,10 @@ function main {
 
     addtion_options="$(echo $addtion_options |sed 's/profile/profile True/')"
 
+    if [ "${device}" == "cuda" ];then
+        addtion_options=${addtion_options}" --device_type cuda "
+    fi
+
     # if multiple use 'xxx,xxx,xxx'
     model_name_list=($(echo "${model_name}" |sed 's/,/ /g'))
     batch_size_list=($(echo "${batch_size}" |sed 's/,/ /g'))
@@ -29,7 +33,7 @@ function main {
         python generate.py --outdir=tmp_output --trunc=0.7 --network=ffhq_256.pkl \
             --render-program=rotation_camera --seeds 1 \
             --precision $precision --num_iter 2 --num_warmup 1 --n_steps 1 \
-            --channels_last $channels_last --batch_size $batch_size
+            --channels_last $channels_last --batch_size $batch_size ${addtion_options}
         #
         for batch_size in ${batch_size_list[@]}
         do

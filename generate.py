@@ -409,6 +409,6 @@ def generate_images(
 #----------------------------------------------------------------------------
 
 if __name__ == "__main__":
-    generate_images(device_type="cuda" if torch.cuda.is_available() else "cpu") # pylint: disable=no-value-for-parameter
+    generate_images() # pylint: disable=no-value-for-parameter
 
 #----------------------------------------------------------------------------
