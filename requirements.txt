@@ -1,5 +1,4 @@
 trimesh
-kornia
 omegaconf==2.3.0
 imageio_ffmpeg
 imageio
