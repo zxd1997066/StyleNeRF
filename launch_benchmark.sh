@@ -15,6 +15,7 @@ function main {
         wget https://huggingface.co/facebook/stylenerf-ffhq-config-basic/resolve/main/ffhq_256.pkl
     fi
     pip install -r ${workload_dir}/requirements.txt
+    pip install kornia --no-deps
 
     addtion_options="$(echo $addtion_options |sed 's/profile/profile True/')"
 
