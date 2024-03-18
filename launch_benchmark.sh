@@ -31,7 +31,7 @@ function main {
     for model_name in ${model_name_list[@]}
     do
         if [ $batch_size -le 0 ];then
-            batch_size=32
+            batch_size=1
         fi
         # pre run
         python generate.py --outdir=tmp_output --trunc=0.7 --network=ffhq_256.pkl \
@@ -42,7 +42,7 @@ function main {
         for batch_size in ${batch_size_list[@]}
         do
             if [ $batch_size -le 0 ];then
-                batch_size=32
+                batch_size=1
             fi
             # clean workspace
             logs_path_clean
