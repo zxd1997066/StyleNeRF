@@ -21,6 +21,7 @@ import dnnlib
 import numpy as np
 import PIL.Image
 import torch
+import torch._inductor
 import imageio
 import legacy
 from renderer import Renderer
@@ -197,6 +198,8 @@ def generate_images(
             #     z = z.to(memory_format=torch.channels_last)
             relative_range_u = [0.5 - 0.5 * relative_range_u_scale, 0.5 + 0.5 * relative_range_u_scale]
             if profile:
+                torch._inductor.config.profiler_mark_wrapper_call = True
+                torch._inductor.config.cpp.enable_kernel_profile = True
                 with torch.profiler.profile(
                     activities=[torch.profiler.ProfilerActivity.CPU],
                     record_shapes=True,
