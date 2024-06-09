@@ -3,4 +3,4 @@ omegaconf==2.3.0
 imageio_ffmpeg
 imageio
 einops
-typing_extensions==4.4.0
+typing_extensions
