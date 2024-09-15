@@ -68,7 +68,8 @@ os.environ['PYOPENGL_PLATFORM'] = 'egl'
                     help="enable torch.compile")
 @click.option("--backend", type=str, default='inductor',
                     help="enable torch.compile backend")
-
+@click.option("--triton_cpu", action='store_true', default=False,
+                    help="enable triton_cpu")
 def generate_images(
     ctx: click.Context,
     network_pkl: str,
@@ -93,7 +94,8 @@ def generate_images(
     ipex=False,
     profile=False,
     compile=False,
-    backend='inductor'
+    backend='inductor',
+    triton_cpu=False
 ):
 
     
@@ -128,7 +130,10 @@ def generate_images(
         misc.copy_params_and_buffers(G, G2, require_all=False)
         # D2 = Discriminator(*D.init_args, **D.init_kwargs).to(device)
         # misc.copy_params_and_buffers(D, D2, require_all=False)
-    
+    if triton_cpu:
+        print("run with triton cpu backend")
+        import torch._inductor.config
+        torch._inductor.config.cpu_backend="triton"
     if channels_last:
         G2 = G2.to(memory_format=torch.channels_last)
         print("Running NHWC ...")
