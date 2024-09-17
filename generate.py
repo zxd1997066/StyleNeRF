@@ -68,7 +68,7 @@ os.environ['PYOPENGL_PLATFORM'] = 'egl'
                     help="enable torch.compile")
 @click.option("--backend", type=str, default='inductor',
                     help="enable torch.compile backend")
-@click.option("--triton_cpu", action='store_true', default=False,
+@click.option("--triton_cpu", default=False,
                     help="enable triton_cpu")
 def generate_images(
     ctx: click.Context,
