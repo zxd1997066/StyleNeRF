@@ -98,7 +98,7 @@ def generate_images(
     triton_cpu=False
 ):
 
-    
+    import torch
     device = torch.device(device_type)
     if os.path.isdir(network_pkl):
         network_pkl = sorted(glob.glob(network_pkl + '/*.pkl'))[-1]
